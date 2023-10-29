@@ -3,8 +3,11 @@ import requests
 import base64
 import json
 import datetime
+import zoneinfo
 
 from ask_sdk_core.skill_builder import SkillBuilder
+from ask_sdk_core.handler_input import HandlerInput
+from ask_sdk_model.dialog import ElicitSlotDirective
 from ask_sdk_core.dispatch_components import AbstractRequestHandler
 from ask_sdk_core.utils import is_request_type, is_intent_name
 from ask_sdk_model import Response
@@ -35,6 +38,28 @@ def refresh_credentials(client_id, client_secret, refresh_token):
     response = requests.post('https://api.fitbit.com/oauth2/token', headers=headers, data=data)
     return response.json()
 
+def handle_tokens():
+    access_token = get_parameter('FITBIT_ACCESS_TOKEN')
+    refresh_token = get_parameter('FITBIT_REFRESH_TOKEN')
+    client_id = get_parameter('FITBIT_CLIENT_ID')
+    client_secret = get_parameter('FITBIT_CLIENT_SECRET')
+    
+    # Use access token to make Fitbit API request
+    headers = {'Authorization': f'Bearer {access_token}'}
+    response = requests.get('https://api.fitbit.com/1/user/-/profile.json', headers=headers)
+
+    if response.status_code == 401:
+        refresh_tokens(client_id, client_secret, refresh_token)
+
+    return get_parameter('FITBIT_ACCESS_TOKEN')
+
+
+def refresh_tokens(client_id, client_secret, refresh_token):
+    refreshed_tokens = refresh_credentials(client_id, client_secret, refresh_token)
+    update_parameter('FITBIT_ACCESS_TOKEN', refreshed_tokens.get('access_token'))
+    update_parameter('FITBIT_REFRESH_TOKEN', refreshed_tokens.get('refresh_token'))
+
+
 def get_meal_type_id(current_hour):
     if 6 <= current_hour < 11:
         return 1  # Breakfast
@@ -49,123 +74,125 @@ def get_meal_type_id(current_hour):
     else:
         return 6  # Anytime
 
-def food_logger(food_item):
-    # Retrieve tokens and credentials from SSM Parameter Store
-    access_token = get_parameter('FITBIT_ACCESS_TOKEN')
-    refresh_token = get_parameter('FITBIT_REFRESH_TOKEN')
-    client_id = get_parameter('FITBIT_CLIENT_ID')
-    client_secret = get_parameter('FITBIT_CLIENT_SECRET')
+def log_food(access_token, food_id, meal_type_id, unit_id, quantity):
+    # Headers for the Fitbit API request
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/x-www-form-urlencoded'
+    }
 
-    # Use access token to make Fitbit API request
-    headers = {'Authorization': f'Bearer {access_token}'}
-    response = requests.get('https://api.fitbit.com/1/user/-/profile.json', headers=headers)
+    # Get current date in Eastern time
+    eastern = ZoneInfo('America/New_York')
+    now = datetime.datetime.now(eastern)
+    today_date = now.strftime('%Y-%m-%d')
 
-    # Check if the access token needs to be refreshed
-    if response.status_code == 401:  # Unauthorized
-        # Refresh the tokens
-        refreshed_tokens = refresh_credentials(client_id, client_secret, refresh_token)
-        access_token = refreshed_tokens.get('access_token')
-        refresh_token = refreshed_tokens.get('refresh_token')
+    # Construct the data for logging the food
+    food_log_data = {
+        "foodId": food_id,
+        "mealTypeId": meal_type_id,
+        "unitId": unit_id,
+        "amount": quantity,
+        "date": today_date
+    }
 
-        # Update tokens in SSM Parameter Store
-        update_parameter('FITBIT_ACCESS_TOKEN', access_token)
-        update_parameter('FITBIT_REFRESH_TOKEN', refresh_token)
+    # Convert the data dictionary to URL parameters
+    params = "&".join(f"{key}={value}" for key, value in food_log_data.items())
 
-        # Retry the Fitbit API request with the new access token
-        headers = {'Authorization': f'Bearer {access_token}'}
-        response = requests.get('https://api.fitbit.com/1/user/-/profile.json', headers=headers)
+    # Endpoint for logging the food
+    log_endpoint = f"https://api.fitbit.com/1/user/-/foods/log.json?{params}"
 
-    # Call the Fitbit API to search for the food item and log it
-    try:
-        access_token = access_token # Set your access token as an environment variable in Lambda
-        headers = {
-            'Authorization': f'Bearer {access_token}',
-            'Content-Type': 'application/x-www-form-urlencoded'
+    # Make the POST request to log the food
+    log_response = requests.post(log_endpoint, headers=headers)
+    log_response_json = log_response.json()
+
+    if log_response.status_code == 201:
+        print("Food logged successfully!")
+        return {
+            'statusCode': 200,
+            'body': log_response_json
+        }
+    else:
+        print(f"Failed to log food with status code: {log_response.status_code}")
+        print(log_response.text)
+        return {
+            'statusCode': log_response.status_code,
+            'body': log_response_json
         }
 
-        # Example: Search for the food item (you need to handle pagination and selecting the correct item)
-        search_endpoint = f"https://api.fitbit.com/1/foods/search.json?query={food_item}"
-        search_response = requests.get(search_endpoint, headers=headers)
-        if search_response.status_code == 200:
-            search_results = search_response.json()
-            
-            # Get the list of foods from the JSON response
-            foods = search_results.get('foods')
-            
-            if foods and len(foods) > 0:
-                # Get and print the first food item
-                first_food = foods[0]
-                food_id = first_food.get('foodId')
-                print(first_food)
-        
-                # Get current date and time
-                now = datetime.datetime.now()
-                today_date = now.strftime('%Y-%m-%d')
-                current_hour = now.hour
-                
-                # Set up the data for the food log
-                food_log_data = {
-                    "foodId": food_id,
-                    "mealTypeId": get_meal_type_id(current_hour),
-                    "unitId": first_food.get('defaultUnit').get('id'),
-                    "amount": 1,
-                    "date": today_date
-                }
-                
-                # Convert the data dictionary to URL parameters
-                params = "&".join(f"{key}={value}" for key, value in food_log_data.items())
-                
-                # Construct the endpoint with the parameters in the URL
-                log_endpoint = f"https://api.fitbit.com/1/user/-/foods/log.json?{params}"
-                
-                # Make the POST request to log the food
-                log_response = requests.post(log_endpoint, headers=headers)
-                print(log_response.json())
-                
-                if log_response.status_code == 201:
-                    print("Food logged successfully!")
-                    return {
-                        'statusCode': 200,
-                        'body': 'Food logged successfully'  # Adjust this based on actual operation result
-                    }
-                else:
-                    print(f"Failed to log food with status code: {log_response.statusCode}")
-                    print(log_response.text)
-                    speak_output = "Evil forces are stopping me from logging your food!"
-                    # Ask for the food item and keep the session open
-                    return {
-                        'statusCode': 400
-                    }
-            else:
-                print(f"No foods found for query: {food_item}")
-                speak_output = "Mischievous forces are stopping me from finding that food!"
-                return handler_input.response_builder.speak(speak_output).ask(speak_output).response
-        else:
-            print(f"Error with status code: {search_response.status_code}")
-            print(search_response.text)
-            speak_output = "I cant communicate with the food log. Someone must be trying to stop us."
-            return handler_input.response_builder.speak(speak_output).ask(speak_output).response
-
-    except Exception as e:
-        print(f"Error: {e}")
-        # Handle the exception appropriately
-
-    return {
-        'statusCode': 200,
-        'body': 'Food logged successfully'  # Adjust this based on actual operation result
+def food_logger(handler_input, food_item, session_attributes, user_response=None):
+    access_token = handle_tokens()
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/x-www-form-urlencoded'
     }
+    
+    search_endpoint = f"https://api.fitbit.com/1/foods/search.json?query={food_item}"
+    search_response = requests.get(search_endpoint, headers=headers)
+    
+    if search_response.status_code == 200:
+        search_results = search_response.json()
+        foods = search_results.get('foods')
+        
+        if 'action' in session_attributes:
+            action = session_attributes['action']
+            
+            if action == 'confirm':
+                if user_response.lower() == 'yes':
+                    selected_food = foods[session_attributes['current_index']]
+                    default_quantity = selected_food.get('defaultServingSize', 1)
+                    response = log_food(access_token, selected_food, default_quantity)
+                    session_attributes = {}
+                    speak_output = response['body']
+                elif user_response.lower() == 'update quantity':
+                    speak_output = "How much did Nick eat?"
+                    session_attributes['action'] = 'update_quantity'
+                elif user_response.lower() == 'wrong food':
+                    speak_output = "Let me find other options."
+                    session_attributes['action'] = 'wrong_food'
+            
+            elif action == 'update_quantity':
+                # Update the quantity of the selected food item and log it
+                selected_food = foods[session_attributes['current_index']]
+                response = log_food(access_token, selected_food, int(user_response))
+                session_attributes = {}
+                speak_output = response['body']
+            
+            elif action == 'wrong_food':
+                # Present the next option from the food list and update the current index
+                index = session_attributes.get('current_index', 0) + 1
+                if index < len(foods):
+                    next_food = foods[index]
+                    speak_output = (f"How about {next_food.get('name')}? "
+                                    "Would you like me to log this item?")
+                    session_attributes['current_index'] = index
+                else:
+                    speak_output = "I'm out of options. Let's try a different query."
+                    session_attributes = {}
+            
+            return handler_input.response_builder.speak(speak_output).ask(speak_output).response
+        
+        elif foods and len(foods) > 0:
+            first_food = foods[0]
+            speak_output = (f"I found {first_food.get('name')}. "
+                            f"Would you like me to log this item?")
+            session_attributes['action'] = 'confirm'
+            session_attributes['foods'] = foods
+            session_attributes['current_index'] = 0
+            
+            return handler_input.response_builder.speak(speak_output).ask(speak_output).response
+        
+    else:
+        speak_output = "I cant access the food log."
+        return handler_input.response_builder.speak(speak_output).ask(speak_output).response
 
 sb = SkillBuilder()
 
 class LaunchRequestHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
-        # Check if the request is of type LaunchRequest
         return is_request_type("LaunchRequest")(handler_input)
 
     def handle(self, handler_input):
-        # Provide a welcome message
         speak_output = "Welcome to Nick Ate! What did Nick Eat?"
-        # Ask for the food item and keep the session open
         return handler_input.response_builder.speak(speak_output).ask(speak_output).response
 
 
@@ -174,45 +201,33 @@ class LogFoodIntentHandler(AbstractRequestHandler):
         return is_intent_name("LogFoodIntent")(handler_input)
 
     def handle(self, handler_input):
+        session_attributes = handler_input.attributes_manager.session_attributes
         food_item = handler_input.request_envelope.request.intent.slots["FoodItem"].value
-        # Call your existing logic to log the food item to Fitbit here
-        
-        status = food_logger(food_item)
-        print(status)
+        user_response = None
+        if "UserResponse" in handler_input.request_envelope.request.intent.slots:
+            user_response = handler_input.request_envelope.request.intent.slots["UserResponse"].value
+        response = food_logger(handler_input, food_item, session_attributes, user_response)
+        return response
 
-        if status["statusCode"] == 200:
-            speech_text = f"Wicked! Logged that {food_item} to Fitbit!"
-        else:
-            speech_text = f"Evil forces are stopping me from logging your food!"
-        handler_input.response_builder.speak(speech_text).set_should_end_session(True)
-        return handler_input.response_builder.response
-
-# StopIntentHandler Class
 class StopIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
-        # Check if the intent name is AMAZON.StopIntent
         return is_intent_name("AMAZON.StopIntent")(handler_input)
 
     def handle(self, handler_input):
-        # Provide a farewell message
         speak_output = "Thanks. Keep me posted on what you eat."
-        # End the session and close the skill
         return handler_input.response_builder.speak(speak_output).set_should_end_session(True).response
 
-# CancelIntentHandler Class
 class CancelIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
-        # Check if the intent name is AMAZON.CancelIntent
         return is_intent_name("AMAZON.CancelIntent")(handler_input)
 
     def handle(self, handler_input):
-        # Provide a farewell message
         speak_output = "Come back when you have more food to tell me about!"
-        # End the session and close the skill
         return handler_input.response_builder.speak(speak_output).set_should_end_session(True).response
-
 
 sb.add_request_handler(LaunchRequestHandler())
 sb.add_request_handler(LogFoodIntentHandler())
+sb.add_request_handler(StopIntentHandler())
+sb.add_request_handler(CancelIntentHandler())
 
 lambda_handler = sb.lambda_handler()
