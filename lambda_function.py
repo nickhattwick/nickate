@@ -74,7 +74,7 @@ def get_meal_type_id(current_hour):
     else:
         return 6  # Anytime
 
-def log_food(access_token, food_id, meal_type_id, unit_id, quantity):
+def log_food(access_token, food_id, unit_id, quantity):
     # Headers for the Fitbit API request
     headers = {
         'Authorization': f'Bearer {access_token}',
@@ -82,18 +82,21 @@ def log_food(access_token, food_id, meal_type_id, unit_id, quantity):
     }
 
     # Get current date in Eastern time
-    eastern = ZoneInfo('America/New_York')
+    eastern = zoneinfo.ZoneInfo('America/New_York')
     now = datetime.datetime.now(eastern)
     today_date = now.strftime('%Y-%m-%d')
+    meal_type = get_meal_type_id(now.hour)
 
     # Construct the data for logging the food
     food_log_data = {
         "foodId": food_id,
-        "mealTypeId": meal_type_id,
+        "mealTypeId": meal_type,
         "unitId": unit_id,
         "amount": quantity,
         "date": today_date
     }
+
+    print(food_log_data)
 
     # Convert the data dictionary to URL parameters
     params = "&".join(f"{key}={value}" for key, value in food_log_data.items())
@@ -104,6 +107,7 @@ def log_food(access_token, food_id, meal_type_id, unit_id, quantity):
     # Make the POST request to log the food
     log_response = requests.post(log_endpoint, headers=headers)
     log_response_json = log_response.json()
+    print(log_response_json)
 
     if log_response.status_code == 201:
         print("Food logged successfully!")
@@ -138,43 +142,64 @@ def food_logger(handler_input, food_item, session_attributes, user_response=None
             
             if action == 'confirm':
                 if user_response.lower() == 'yes':
-                    selected_food = foods[session_attributes['current_index']]
+                    selected_food = session_attributes['foods'][session_attributes['current_index']]
+                    food_id = selected_food.get('foodId')
+                    unit_id = selected_food.get('defaultUnit').get('id')
                     default_quantity = selected_food.get('defaultServingSize', 1)
-                    response = log_food(access_token, selected_food, default_quantity)
-                    session_attributes = {}
-                    speak_output = response['body']
+
+                    response = log_food(access_token, food_id, unit_id, default_quantity)
+                    print(selected_food)
+                    speak_output = f"Wicked, logged that {selected_food['name']} to Fitbit"
+                    return handler_input.response_builder.speak(speak_output).set_should_end_session(True).response
                 elif user_response.lower() == 'update quantity':
                     speak_output = "How much did Nick eat?"
                     session_attributes['action'] = 'update_quantity'
-                elif user_response.lower() == 'wrong food':
+                elif user_response.lower() == 'next food':
                     speak_output = "Let me find other options."
-                    session_attributes['action'] = 'wrong_food'
+                    index = session_attributes['current_index'] + 1
+                    if index < len(session_attributes['foods']):
+                        next_food = session_attributes['foods'][index]
+                        unit_name = next_food.get('defaultUnit').get('name')
+                        default_serving_size = next_food.get('defaultServingSize')
+                        unit_name = unit_name if default_serving_size == 1 else next_food.get('defaultUnit').get('plural')
+                        speak_output = (f"How about {next_food.get('name')}, "
+                            f"with a default serving size of {default_serving_size} "
+                            f"{unit_name} "
+                            f"and {next_food.get('calories')} calories. "
+                            "Would you like me to log that instead?")
+                        session_attributes['current_index'] = index
+                        session_attributes['action'] = 'confirm'
+                    else:
+                        speak_output = "I'm out of options. Let's try a different query."
+                        session_attributes = {}
             
             elif action == 'update_quantity':
                 # Update the quantity of the selected food item and log it
-                selected_food = foods[session_attributes['current_index']]
-                response = log_food(access_token, selected_food, int(user_response))
+                selected_food = session_attributes['foods'][session_attributes['current_index']]
+                unit_id = selected_food.get('defaultUnit').get('id')
+                unit_name = selected_food.get('defaultUnit').get('name') if int(user_response) == 1 else selected_food.get('defaultUnit').get('plural')
+                food_id = selected_food.get('foodId')
+
+                response = log_food(access_token, food_id, unit_id, int(user_response))
                 session_attributes = {}
-                speak_output = response['body']
+                speak_output = f"Wicked, logged {user_response} {unit_name} of {selected_food['name']} to Fitbit"
+                return handler_input.response_builder.speak(speak_output).set_should_end_session(True).response
             
-            elif action == 'wrong_food':
-                # Present the next option from the food list and update the current index
-                index = session_attributes.get('current_index', 0) + 1
-                if index < len(foods):
-                    next_food = foods[index]
-                    speak_output = (f"How about {next_food.get('name')}? "
-                                    "Would you like me to log this item?")
-                    session_attributes['current_index'] = index
-                else:
-                    speak_output = "I'm out of options. Let's try a different query."
-                    session_attributes = {}
-            
+            print(f'Session attributes on 184: {session_attributes}')
             return handler_input.response_builder.speak(speak_output).ask(speak_output).response
         
         elif foods and len(foods) > 0:
             first_food = foods[0]
-            speak_output = (f"I found {first_food.get('name')}. "
-                            f"Would you like me to log this item?")
+            unit_name = first_food.get('defaultUnit').get('name')
+            default_serving_size = first_food.get('defaultServingSize')
+
+            unit_name = unit_name if default_serving_size == 1 else first_food.get('defaultUnit').get('plural')
+
+            speak_output = (f"I found {first_food.get('name')}, "
+                f"with a default serving size of {default_serving_size} "
+                f"{unit_name} "
+                f"and {first_food.get('calories')} calories. "
+                "Would you like me to log this item?")
             session_attributes['action'] = 'confirm'
             session_attributes['foods'] = foods
             session_attributes['current_index'] = 0
