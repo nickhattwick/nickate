@@ -189,6 +189,7 @@ class ConfirmFoodIntentHandler(AbstractRequestHandler):
     def handle(self, handler_input):
         session_attributes = handler_input.attributes_manager.session_attributes
         if 'foods' in session_attributes:
+            access_token = handle_tokens()
             selected_food = session_attributes['foods'][session_attributes['current_index']]
             food_id = selected_food.get('foodId')
             unit_id = selected_food.get('defaultUnit').get('id')
@@ -206,7 +207,8 @@ class UpdateQuantityIntentHandler(AbstractRequestHandler):
 
     def handle(self, handler_input):
         session_attributes = handler_input.attributes_manager.session_attributes
-        quantity = handler_input.request_envelope.request.intent.slots["Quantity"].value
+        access_token = handle_tokens()
+        quantity = handler_input.request_envelope.request.intent.slots["quantity"].value
         selected_food = session_attributes['foods'][session_attributes['current_index']]
         unit_id = selected_food.get('defaultUnit').get('id')
 
