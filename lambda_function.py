@@ -243,7 +243,8 @@ class SwitchFoodIntentHandler(AbstractRequestHandler):
                 speak_output = "I'm out of options. Let's try a different query."
                 session_attributes = {}
         
-        else speak_output = "Tell me what you ate first"
+        else:
+            speak_output = "Tell me what you ate first"
 
         return handler_input.response_builder.speak(speak_output).ask(speak_output).response
 
