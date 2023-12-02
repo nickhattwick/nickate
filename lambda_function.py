@@ -137,58 +137,7 @@ def food_logger(handler_input, food_item, session_attributes, user_response=None
         search_results = search_response.json()
         foods = search_results.get('foods')
         
-        if 'action' in session_attributes:
-            action = session_attributes['action']
-            
-            if action == 'confirm':
-                if user_response.lower() == 'yes':
-                    selected_food = session_attributes['foods'][session_attributes['current_index']]
-                    food_id = selected_food.get('foodId')
-                    unit_id = selected_food.get('defaultUnit').get('id')
-                    default_quantity = selected_food.get('defaultServingSize', 1)
-
-                    response = log_food(access_token, food_id, unit_id, default_quantity)
-                    print(selected_food)
-                    speak_output = f"Wicked, logged that {selected_food['name']} to Fitbit"
-                    return handler_input.response_builder.speak(speak_output).set_should_end_session(True).response
-                elif user_response.lower() == 'update quantity':
-                    speak_output = "How much did Nick eat?"
-                    session_attributes['action'] = 'update_quantity'
-                elif user_response.lower() == 'next food':
-                    speak_output = "Let me find other options."
-                    index = session_attributes['current_index'] + 1
-                    if index < len(session_attributes['foods']):
-                        next_food = session_attributes['foods'][index]
-                        unit_name = next_food.get('defaultUnit').get('name')
-                        default_serving_size = next_food.get('defaultServingSize')
-                        unit_name = unit_name if default_serving_size == 1 else next_food.get('defaultUnit').get('plural')
-                        speak_output = (f"How about {next_food.get('name')}, "
-                            f"with a default serving size of {default_serving_size} "
-                            f"{unit_name} "
-                            f"and {next_food.get('calories')} calories. "
-                            "Would you like me to log that instead?")
-                        session_attributes['current_index'] = index
-                        session_attributes['action'] = 'confirm'
-                    else:
-                        speak_output = "I'm out of options. Let's try a different query."
-                        session_attributes = {}
-            
-            elif action == 'update_quantity':
-                # Update the quantity of the selected food item and log it
-                selected_food = session_attributes['foods'][session_attributes['current_index']]
-                unit_id = selected_food.get('defaultUnit').get('id')
-                unit_name = selected_food.get('defaultUnit').get('name') if int(user_response) == 1 else selected_food.get('defaultUnit').get('plural')
-                food_id = selected_food.get('foodId')
-
-                response = log_food(access_token, food_id, unit_id, int(user_response))
-                session_attributes = {}
-                speak_output = f"Wicked, logged {user_response} {unit_name} of {selected_food['name']} to Fitbit"
-                return handler_input.response_builder.speak(speak_output).set_should_end_session(True).response
-            
-            print(f'Session attributes on 184: {session_attributes}')
-            return handler_input.response_builder.speak(speak_output).ask(speak_output).response
-        
-        elif foods and len(foods) > 0:
+        if foods and len(foods) > 0:
             first_food = foods[0]
             unit_name = first_food.get('defaultUnit').get('name')
             default_serving_size = first_food.get('defaultServingSize')
@@ -200,7 +149,6 @@ def food_logger(handler_input, food_item, session_attributes, user_response=None
                 f"{unit_name} "
                 f"and {first_food.get('calories')} calories. "
                 "Would you like me to log this item?")
-            session_attributes['action'] = 'confirm'
             session_attributes['foods'] = foods
             session_attributes['current_index'] = 0
             
@@ -234,6 +182,74 @@ class LogFoodIntentHandler(AbstractRequestHandler):
         response = food_logger(handler_input, food_item, session_attributes, user_response)
         return response
 
+class ConfirmFoodIntentHandler(AbstractRequestHandler):
+    def can_handle(self, handler_input):
+        return is_intent_name("ConfirmFoodIntent")(handler_input)
+
+    def handle(self, handler_input):
+        session_attributes = handler_input.attributes_manager.session_attributes
+        if 'foods' in session_attributes:
+            access_token = handle_tokens()
+            selected_food = session_attributes['foods'][session_attributes['current_index']]
+            food_id = selected_food.get('foodId')
+            unit_id = selected_food.get('defaultUnit').get('id')
+            default_quantity = selected_food.get('defaultServingSize', 1)
+
+            response = log_food(access_token, food_id, unit_id, default_quantity)
+            speak_output = f"Wicked, logged that {selected_food['name']} to Fitbit"
+        else:
+            speak_output = "You have to tell me what you ate first"
+        return handler_input.response_builder.speak(speak_output).set_should_end_session(True).response
+
+class UpdateQuantityIntentHandler(AbstractRequestHandler):
+    def can_handle(self, handler_input):
+        return is_intent_name("UpdateQuantityIntent")(handler_input)
+
+    def handle(self, handler_input):
+        session_attributes = handler_input.attributes_manager.session_attributes
+        access_token = handle_tokens()
+        quantity = handler_input.request_envelope.request.intent.slots["quantity"].value
+        selected_food = session_attributes['foods'][session_attributes['current_index']]
+        unit_id = selected_food.get('defaultUnit').get('id')
+
+        quantity = float(quantity)
+
+        unit_name = selected_food.get('defaultUnit').get('name') if quantity == 1 else selected_food.get('defaultUnit').get('plural')
+        food_id = selected_food.get('foodId')
+
+        response = log_food(access_token, food_id, unit_id, quantity)
+        speak_output = f"Wicked, logged {quantity} {unit_name} of {selected_food['name']} to Fitbit"
+        return handler_input.response_builder.speak(speak_output).set_should_end_session(True).response
+
+class SwitchFoodIntentHandler(AbstractRequestHandler):
+    def can_handle(self, handler_input):
+        return is_intent_name("SwitchFoodIntent")(handler_input)
+
+    def handle(self, handler_input):
+        session_attributes = handler_input.attributes_manager.session_attributes
+        if 'foods' in session_attributes:
+            index = session_attributes['current_index'] + 1
+            if index < len(session_attributes['foods']):
+                next_food = session_attributes['foods'][index]
+                unit_name = next_food.get('defaultUnit').get('name')
+                default_serving_size = next_food.get('defaultServingSize')
+                unit_name = unit_name if default_serving_size == 1 else next_food.get('defaultUnit').get('plural')
+                speak_output = (f"How about {next_food.get('name')}, "
+                                f"with a default serving size of {default_serving_size} "
+                                f"{unit_name} "
+                                f"and {next_food.get('calories')} calories. "
+                                "Would you like me to log that instead?")
+                session_attributes['current_index'] = index
+                session_attributes['action'] = 'confirm'
+            else:
+                speak_output = "I'm out of options. Let's try a different query."
+                session_attributes = {}
+        
+        else:
+            speak_output = "Tell me what you ate first"
+
+        return handler_input.response_builder.speak(speak_output).ask(speak_output).response
+
 class StopIntentHandler(AbstractRequestHandler):
     def can_handle(self, handler_input):
         return is_intent_name("AMAZON.StopIntent")(handler_input)
@@ -254,5 +270,8 @@ sb.add_request_handler(LaunchRequestHandler())
 sb.add_request_handler(LogFoodIntentHandler())
 sb.add_request_handler(StopIntentHandler())
 sb.add_request_handler(CancelIntentHandler())
+sb.add_request_handler(ConfirmFoodIntentHandler())
+sb.add_request_handler(UpdateQuantityIntentHandler())
+sb.add_request_handler(SwitchFoodIntentHandler())
 
 lambda_handler = sb.lambda_handler()
