@@ -4,29 +4,49 @@ Welcome to Nick Ate, an Alexa skill that allows you to log your food consumption
 Enjoy a variety of conversation flows!
 
 **Smooth sailing**
+
 Nick: Alexa, open Nick Ate
+
 Alexa: Welcome to Nick Ate! What did Nick Eat?
+
 Nick: Nick ate a banana
+
 Alexa: I found Banana, with a default serving size of 100 grams and 90 calories. Would you like me to log this item?
+
 Nick: Yes
+
 Alexa: Wicked! Logged that banana to Fitbit
 
 **Master of numbers**
+
 Nick: Alexa, open Nick Ate
+
 Alexa: Welcome to Nick Ate! What did Nick Eat?
+
 Nick: Nick ate a banana
+
 Alexa: I found Banana, with a default serving size of 100 grams and 90 calories. Would you like me to log this item?
+
 Nick: Update quantity to 2
+
 Alexa: Wicked, logged 2.0 grams of Banana to Fitbit
 
 **Lying in wait**
+
 Nick: Alexa, open Nick Ate
+
 Alexa: Welcome to Nick Ate! What did Nick Eat?
+
 Nick: Nick ate a banana
+
 Alexa: I found Banana, with a default serving size of 100 grams and 90 calories. Would you like me to log this item?
+
 Nick: Next
+
 Alexa: How about Banana, Raw, with a default serving size of 1 extra-small and 72 calories. Would you like me to log that instead?
+
 Nick: Next
+
 ...
 
 ## Prerequisites
