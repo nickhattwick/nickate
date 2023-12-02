@@ -1,6 +1,6 @@
 Welcome to Nick Ate, an Alexa skill that allows you to log your food consumption to Fitbit if you like or will begrudgingly accept being called Nick. Due to potential Lambda costs if this somehow became popular, I'm providing steps to recreate this skill in your own dev environment and enjoy being called Nick and logging your food from the comfort of your own home. 
 
-## How Nick Ate works"
+## How Nick Ate works
 Enjoy a variety of conversation flows!
 **Smooth sailing**
 Nick: Alexa, open Nick Ate
