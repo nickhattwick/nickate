@@ -177,11 +177,15 @@ def food_logger(handler_input, food_item, session_attributes, user_response=None
                 # Update the quantity of the selected food item and log it
                 selected_food = session_attributes['foods'][session_attributes['current_index']]
                 unit_id = selected_food.get('defaultUnit').get('id')
-                unit_name = selected_food.get('defaultUnit').get('name') if int(user_response) == 1 else selected_food.get('defaultUnit').get('plural')
+
+                user_response = float(user_response)
+                
+                unit_name = selected_food.get('defaultUnit').get('name') if user_response == 1 else selected_food.get('defaultUnit').get('plural')
                 food_id = selected_food.get('foodId')
 
-                response = log_food(access_token, food_id, unit_id, int(user_response))
+                response = log_food(access_token, food_id, unit_id, user_response)
                 session_attributes = {}
+
                 speak_output = f"Wicked, logged {user_response} {unit_name} of {selected_food['name']} to Fitbit"
                 return handler_input.response_builder.speak(speak_output).set_should_end_session(True).response
             
