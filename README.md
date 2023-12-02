@@ -89,13 +89,17 @@ Before you begin, you'll need
 2. Create a new Alexa skill called Nick Ate
 3. Set the invocation name to "nick ate" or "Nick eight"
 4. Configure the skill's interaction model providing the following intent handlers
+
    a. LogFoodIntent handler with a variable option for FoodItem and utterance examples like as "Nick ate {FoodItem}". Protip: Alexa mishears, so do both "ate" and "eight"
+
    b. ConfirmFoodIntent with example utterances like "yes" and "confirm"
+
    c. UpdateQuantityIntent with a variable of "quantity" and examples such as "Update quantity to {quantity}"
+
    d. SwitchFoodIntent with utterances like "next" or "wrong"
-5. Set up the skill's endpoint to point to the AWS Lambda function you created earlier.
-6. Build your Alexa skill in development
-7. Test your Alexa skill in the Alexa Developer Console to ensure it works correctly.
+6. Set up the skill's endpoint to point to the AWS Lambda function you created earlier.
+7. Build your Alexa skill in development
+8. Test your Alexa skill in the Alexa Developer Console to ensure it works correctly.
 
 ### 5. Deploy and Test
 
