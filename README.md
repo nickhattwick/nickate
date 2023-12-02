@@ -2,6 +2,7 @@ Welcome to Nick Ate, an Alexa skill that allows you to log your food consumption
 
 ## How Nick Ate works
 Enjoy a variety of conversation flows!
+
 **Smooth sailing**
 Nick: Alexa, open Nick Ate
 Alexa: Welcome to Nick Ate! What did Nick Eat?
